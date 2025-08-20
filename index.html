@@ -101,7 +101,7 @@
             if (!pingInterval) {
                 pingInterval = setInterval(() => {
                     if (socket.readyState === WebSocket.OPEN) {
-                        socket.send(JSON.stringify({ type: "ping" }));
+                        socket.send("ping");
                     }
                 }, 1000);
             }
