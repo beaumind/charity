@@ -229,8 +229,10 @@
         document.getElementById('receiptAmount').innerText = `مبلغ: ${amount.toLocaleString()} تومان`;
         document.getElementById('receiptDate').innerText = `تاریخ: ${paymentDetails.date || '-'}`;
         document.getElementById('receiptTracking').innerText = `کد پیگیری: ${paymentDetails.tracking_number || '-'}`;
+
         const receipt = document.getElementById('printableReceipt');
         receipt.style.display = 'block';
+
         html2canvas(receipt, {
             width: receipt.offsetWidth,
             height: receipt.offsetHeight,
@@ -238,23 +240,30 @@
         }).then(function (canvas) {
             const imageData = canvas.toDataURL('image/png');
             const base64 = imageData.split(',')[1];
+
             const payload = {
                 id: "ASD" + Date.now(),
                 data: { conent: base64 },
                 source: "LUMA"
             };
-            if (printerSocket && printerSocket.readyState === WebSocket.OPEN) {
+
+            const printerSocket = new WebSocket("ws://localhost:8019");
+
+            printerSocket.onopen = () => {
                 printerSocket.send(JSON.stringify(payload));
                 console.log("🖨 رسید ارسال شد به پرینتر");
-            } else {
-                console.warn("⚠️ پرینتر در دسترس نیست");
-            }
+            };
+
+            printerSocket.onerror = (err) => {
+                console.error("❌ Printer WebSocket error:", err);
+            };
+
             receipt.style.display = 'none';
         });
     }
 
     connectWebSocket();
-    connectPrinterSocket();
+    // connectPrinterSocket();
 </script>
 </body>
 </html>
