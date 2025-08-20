@@ -128,24 +128,35 @@
                     return;
                 }
 
-                const data = JSON.parse(event.data);
-                if (data.status === "success") {
+                const res = JSON.parse(event.data);
+
+                if (res.data && res.data.is_succeed === true) {
+                    const details = res.data.payment_details || {};
+
                     Swal.fire({
                         icon: 'success',
-                        title: 'پرداخت موفق',
-                        text: 'با تشکر از کمک ارزشمند شما ❤️'
+                        title: 'پرداخت موفق ✅',
+                        html: `
+                    <p>با تشکر از کمک ارزشمند شما ❤️</p>
+                    <hr>
+                    <p><b>تاریخ:</b> ${details.date || '-'}</p>
+                    <p><b>شماره پیگیری:</b> ${details.tracking_number || '-'}</p>
+                    <p><b>شماره مرجع (RRN):</b> ${details.rrn || '-'}</p>
+                    <p><b>ترمینال:</b> ${details.terminal_id || '-'}</p>
+                `
                     });
-                } else if (data.status === "error") {
+
+                } else if (res.data && res.data.is_succeed === false) {
                     Swal.fire({
                         icon: 'error',
-                        title: 'پرداخت ناموفق',
-                        text: 'لطفاً مجدد تلاش کنید.'
+                        title: 'پرداخت ناموفق ❌',
+                        text: 'عملیات پرداخت انجام نشد. لطفاً مجدد تلاش کنید.'
                     });
                 } else {
-                    console.log("🔔 Message from POS:", data);
+                    console.warn("📥 Unknown message format:", res);
                 }
-            } catch (e) {
-                console.warn("❓ Unknown message:", event.data);
+            } catch (err) {
+                console.error("❌ Error parsing message:", err, event.data);
             }
         };
     }
