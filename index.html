@@ -5,14 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>پرداخت خیریه | کمک شما، زندگی می‌سازد</title>
 
-    <!-- Bootstrap -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.rtl.min.css" rel="stylesheet">
-
-    <!-- Google Font: Vazirmatn -->
     <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;700&display=swap" rel="stylesheet">
-
-    <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
 
     <style>
         body {
@@ -79,16 +75,27 @@
     <button class="btn btn-primary btn-custom" onclick="donate()">پرداخت مبلغ دلخواه</button>
 </div>
 
+<!-- رسید قابل پرینت -->
+<div id="printableReceipt" style="display:none; padding: 20px; font-size: 18px; font-family: 'Vazirmatn'; text-align: center; width: 300px; background: white;">
+    <p>💚 پرداخت به خیریه</p>
+    <p id="receiptAmount"></p>
+    <p id="receiptDate"></p>
+    <p id="receiptTracking"></p>
+    <p>با تشکر از همراهی شما 🙏</p>
+</div>
+
 <script>
     let socket = null;
     let socketReady = false;
     let pingInterval = null;
     let reconnectDelay = 1000;
 
+    let printerSocket = null;
+    let printerConnected = false;
+    let reconnectPrinterDelay = 1000;
+
     function connectWebSocket() {
-        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
-            return;
-        }
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
 
         socket = new WebSocket("ws://localhost:8018");
 
@@ -96,8 +103,6 @@
             console.log("✅ WebSocket connected");
             socketReady = true;
             reconnectDelay = 1000;
-
-            // Start sending raw pings every second
             if (!pingInterval) {
                 pingInterval = setInterval(() => {
                     if (socket.readyState === WebSocket.OPEN) {
@@ -113,7 +118,7 @@
             clearInterval(pingInterval);
             pingInterval = null;
             setTimeout(connectWebSocket, reconnectDelay);
-            reconnectDelay = Math.min(reconnectDelay * 2, 10000); // cap at 10s
+            reconnectDelay = Math.min(reconnectDelay * 2, 10000);
         };
 
         socket.onerror = (err) => {
@@ -123,37 +128,29 @@
 
         socket.onmessage = (event) => {
             try {
-                if (event.data === "pong") {
-                    console.log("🏓 Pong received");
-                    return;
-                }
+                if (event.data === "pong") return;
 
                 const res = JSON.parse(event.data);
-
                 if (res.data && res.data.is_succeed === true) {
                     const details = res.data.payment_details || {};
-
                     Swal.fire({
                         icon: 'success',
                         title: 'پرداخت موفق ✅',
                         html: `
-                    <p>با تشکر از کمک ارزشمند شما ❤️</p>
-                    <hr>
-                    <p><b>تاریخ:</b> ${details.date || '-'}</p>
-                    <p><b>شماره پیگیری:</b> ${details.tracking_number || '-'}</p>
-                    <p><b>شماره مرجع (RRN):</b> ${details.rrn || '-'}</p>
-                    <p><b>ترمینال:</b> ${details.terminal_id || '-'}</p>
-                `
+                            <p>با تشکر از کمک ارزشمند شما ❤️</p>
+                            <hr>
+                            <p><b>تاریخ:</b> ${details.date || '-'}</p>
+                            <p><b>شماره پیگیری:</b> ${details.tracking_number || '-'}</p>
+                            <p><b>شماره مرجع (RRN):</b> ${details.rrn || '-'}</p>
+                            <p><b>ترمینال:</b> ${details.terminal_id || '-'}</p>`
                     });
-
+                    printReceipt(details, window.lastDonationAmount);
                 } else if (res.data && res.data.is_succeed === false) {
                     Swal.fire({
                         icon: 'error',
                         title: 'پرداخت ناموفق ❌',
                         text: 'عملیات پرداخت انجام نشد. لطفاً مجدد تلاش کنید.'
                     });
-                } else {
-                    console.warn("📥 Unknown message format:", res);
                 }
             } catch (err) {
                 console.error("❌ Error parsing message:", err, event.data);
@@ -161,46 +158,52 @@
         };
     }
 
-    connectWebSocket();
+    function connectPrinterSocket() {
+        if (printerSocket && (printerSocket.readyState === WebSocket.OPEN || printerSocket.readyState === WebSocket.CONNECTING)) return;
+
+        printerSocket = new WebSocket("ws://localhost:8019");
+
+        printerSocket.onopen = () => {
+            console.log("🖨 WebSocket پرینتر وصل شد");
+            printerConnected = true;
+            reconnectPrinterDelay = 1000;
+        };
+
+        printerSocket.onclose = () => {
+            console.warn("🖨 اتصال به پرینتر قطع شد، تلاش برای اتصال مجدد...");
+            printerConnected = false;
+            setTimeout(connectPrinterSocket, reconnectPrinterDelay);
+            reconnectPrinterDelay = Math.min(reconnectPrinterDelay * 2, 10000);
+        };
+
+        printerSocket.onerror = (err) => {
+            console.error("❌ Printer WebSocket error:", err);
+            printerSocket.close();
+        };
+    }
 
     function donate(amountFromButton = null) {
         const inputAmount = parseInt(document.getElementById('customAmount').value);
         const amount = amountFromButton ?? (inputAmount > 0 ? inputAmount : null);
-
         if (!amount) {
-            Swal.fire({
-                icon: 'warning',
-                title: 'مبلغ نامعتبر',
-                text: 'لطفاً یک مبلغ انتخاب یا وارد کنید.'
-            });
+            Swal.fire({ icon: 'warning', title: 'مبلغ نامعتبر', text: 'لطفاً یک مبلغ انتخاب یا وارد کنید.' });
             return;
         }
-
         const rialAmount = amount * 10;
-
         if (!socket || socket.readyState !== WebSocket.OPEN) {
-            Swal.fire({
-                icon: 'error',
-                title: 'اتصال قطع است',
-                text: 'در حال تلاش برای اتصال مجدد به پوز هستیم. لطفاً چند لحظه دیگر امتحان کنید.'
-            });
+            Swal.fire({ icon: 'error', title: 'اتصال قطع است', text: 'در حال تلاش برای اتصال مجدد به پوز هستیم. لطفاً چند لحظه دیگر امتحان کنید.' });
             return;
         }
-
+        window.lastDonationAmount = amount;
         Swal.fire({
             title: 'در حال ارسال به پوز...',
             html: `مبلغ: <b>${amount.toLocaleString()}</b> تومان`,
             allowOutsideClick: false,
-            didOpen: () => {
-                Swal.showLoading();
-            }
+            didOpen: () => Swal.showLoading()
         });
-
         const payload = {
             id: "ASD" + Date.now(),
-            data: {
-                amount: rialAmount.toString()
-            },
+            data: { amount: rialAmount.toString() },
             configs: {
                 port: 1197,
                 ip: "192.168.70.171",
@@ -209,10 +212,39 @@
             },
             source: "LUMA"
         };
-
         socket.send(JSON.stringify(payload));
     }
-</script>
 
+    function printReceipt(paymentDetails, amount) {
+        document.getElementById('receiptAmount').innerText = `مبلغ: ${amount.toLocaleString()} تومان`;
+        document.getElementById('receiptDate').innerText = `تاریخ: ${paymentDetails.date || '-'}`;
+        document.getElementById('receiptTracking').innerText = `کد پیگیری: ${paymentDetails.tracking_number || '-'}`;
+        const receipt = document.getElementById('printableReceipt');
+        receipt.style.display = 'block';
+        html2canvas(receipt, {
+            width: receipt.offsetWidth,
+            height: receipt.offsetHeight,
+            scale: 2
+        }).then(function (canvas) {
+            const imageData = canvas.toDataURL('image/png');
+            const base64 = imageData.split(',')[1];
+            const payload = {
+                id: "ASD" + Date.now(),
+                data: { conent: base64 },
+                source: "LUMA"
+            };
+            if (printerSocket && printerSocket.readyState === WebSocket.OPEN) {
+                printerSocket.send(JSON.stringify(payload));
+                console.log("🖨 رسید ارسال شد به پرینتر");
+            } else {
+                console.warn("⚠️ پرینتر در دسترس نیست");
+            }
+            receipt.style.display = 'none';
+        });
+    }
+
+    connectWebSocket();
+    connectPrinterSocket();
+</script>
 </body>
 </html>
