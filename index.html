@@ -80,6 +80,71 @@
 </div>
 
 <script>
+    let socket = null;
+    let socketReady = false;
+    let pingInterval = null;
+    let reconnectDelay = 1000; // start at 1s
+
+    function connectWebSocket() {
+        if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+            return;
+        }
+
+        socket = new WebSocket("ws://localhost:8018");
+
+        socket.onopen = () => {
+            console.log("✅ WebSocket connected");
+            socketReady = true;
+            reconnectDelay = 1000;
+
+            // Start sending pings
+            if (!pingInterval) {
+                pingInterval = setInterval(() => {
+                    if (socket.readyState === WebSocket.OPEN) {
+                        socket.send(JSON.stringify({ type: "ping" }));
+                    }
+                }, 1000);
+            }
+        };
+
+        socket.onclose = () => {
+            console.warn("⚠️ WebSocket closed, reconnecting...");
+            socketReady = false;
+            clearInterval(pingInterval);
+            pingInterval = null;
+            setTimeout(connectWebSocket, reconnectDelay);
+            reconnectDelay = Math.min(reconnectDelay * 2, 10000); // cap at 10s
+        };
+
+        socket.onerror = (err) => {
+            console.error("WebSocket error:", err);
+            socket.close();
+        };
+
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.status === "success") {
+                Swal.fire({
+                    icon: 'success',
+                    title: 'پرداخت موفق',
+                    text: 'با تشکر از کمک ارزشمند شما ❤️'
+                });
+            } else if (data.status === "error") {
+                Swal.fire({
+                    icon: 'error',
+                    title: 'پرداخت ناموفق',
+                    text: 'لطفاً مجدد تلاش کنید.'
+                });
+            } else if (data.type === "pong") {
+                console.log("🏓 Pong received");
+            } else {
+                console.log("🔔 Message from POS:", data);
+            }
+        };
+    }
+
+    connectWebSocket(); // start connection on page load
+
     function donate(amountFromButton = null) {
         const inputAmount = parseInt(document.getElementById('customAmount').value);
         const amount = amountFromButton ?? (inputAmount > 0 ? inputAmount : null);
@@ -95,8 +160,17 @@
 
         const rialAmount = amount * 10;
 
+        if (!socket || socket.readyState !== WebSocket.OPEN) {
+            Swal.fire({
+                icon: 'error',
+                title: 'اتصال قطع است',
+                text: 'در حال تلاش برای اتصال مجدد به پوز هستیم. لطفاً چند لحظه دیگر امتحان کنید.'
+            });
+            return;
+        }
+
         Swal.fire({
-            title: 'در حال اتصال به پوز...',
+            title: 'در حال ارسال به پوز...',
             html: `مبلغ: <b>${amount.toLocaleString()}</b> تومان`,
             allowOutsideClick: false,
             didOpen: () => {
@@ -104,41 +178,21 @@
             }
         });
 
-        const socket = new WebSocket("ws://localhost:8018");
-
-        socket.onopen = () => {
-            const payload = {
-                type: "payment_request",
-                amount: rialAmount
-            };
-            socket.send(JSON.stringify(payload));
+        const payload = {
+            id: "ASD" + Date.now(), // simple dynamic ID
+            data: {
+                amount: rialAmount.toString()
+            },
+            configs: {
+                port: 1197,
+                ip: "192.168.70.171",
+                interface: "tcp",
+                provider: "sep"
+            },
+            source: "LUMA"
         };
 
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.status === "success") {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'پرداخت موفق',
-                    text: 'با تشکر از کمک ارزشمند شما ❤️'
-                });
-            } else {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'پرداخت ناموفق',
-                    text: 'لطفاً مجدد تلاش کنید.'
-                });
-            }
-            socket.close();
-        };
-
-        socket.onerror = () => {
-            Swal.fire({
-                icon: 'error',
-                title: 'خطا در اتصال',
-                text: 'اتصال به پوز برقرار نشد.'
-            });
-        };
+        socket.send(JSON.stringify(payload));
     }
 </script>
 
