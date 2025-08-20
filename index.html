@@ -93,7 +93,6 @@
     let printerSocket = null;
     let printerConnected = false;
     let reconnectPrinterDelay = 1000;
-    let printerPingInterval = null;
 
     function connectWebSocket() {
         if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
@@ -168,12 +167,6 @@
             console.log("🖨 WebSocket پرینتر وصل شد");
             printerConnected = true;
             reconnectPrinterDelay = 1000;
-            printerPingInterval = setInterval(() => {
-                if (printerSocket && printerSocket.readyState === WebSocket.OPEN) {
-                    printerSocket.send("ping");
-                }
-            }, 10000);
-
         };
 
         printerSocket.onclose = () => {
@@ -181,8 +174,6 @@
             printerConnected = false;
             setTimeout(connectPrinterSocket, reconnectPrinterDelay);
             reconnectPrinterDelay = Math.min(reconnectPrinterDelay * 2, 10000);
-            clearInterval(printerPingInterval);
-            printerPingInterval = null;
         };
 
         printerSocket.onerror = (err) => {
@@ -191,6 +182,8 @@
         };
 
         printerSocket.onmessage = (event) => {
+            console.log("پیام از پرینتر:", event.data);
+
             try {
                 if (event.data === "pong") return;
             } catch (err) {
