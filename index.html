@@ -83,7 +83,7 @@
     let socket = null;
     let socketReady = false;
     let pingInterval = null;
-    let reconnectDelay = 1000; // start at 1s
+    let reconnectDelay = 1000;
 
     function connectWebSocket() {
         if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
@@ -97,7 +97,7 @@
             socketReady = true;
             reconnectDelay = 1000;
 
-            // Start sending pings
+            // Start sending raw pings every second
             if (!pingInterval) {
                 pingInterval = setInterval(() => {
                     if (socket.readyState === WebSocket.OPEN) {
@@ -122,28 +122,35 @@
         };
 
         socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.status === "success") {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'پرداخت موفق',
-                    text: 'با تشکر از کمک ارزشمند شما ❤️'
-                });
-            } else if (data.status === "error") {
-                Swal.fire({
-                    icon: 'error',
-                    title: 'پرداخت ناموفق',
-                    text: 'لطفاً مجدد تلاش کنید.'
-                });
-            } else if (data.type === "pong") {
-                console.log("🏓 Pong received");
-            } else {
-                console.log("🔔 Message from POS:", data);
+            try {
+                if (event.data === "pong") {
+                    console.log("🏓 Pong received");
+                    return;
+                }
+
+                const data = JSON.parse(event.data);
+                if (data.status === "success") {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'پرداخت موفق',
+                        text: 'با تشکر از کمک ارزشمند شما ❤️'
+                    });
+                } else if (data.status === "error") {
+                    Swal.fire({
+                        icon: 'error',
+                        title: 'پرداخت ناموفق',
+                        text: 'لطفاً مجدد تلاش کنید.'
+                    });
+                } else {
+                    console.log("🔔 Message from POS:", data);
+                }
+            } catch (e) {
+                console.warn("❓ Unknown message:", event.data);
             }
         };
     }
 
-    connectWebSocket(); // start connection on page load
+    connectWebSocket();
 
     function donate(amountFromButton = null) {
         const inputAmount = parseInt(document.getElementById('customAmount').value);
@@ -179,7 +186,7 @@
         });
 
         const payload = {
-            id: "ASD" + Date.now(), // simple dynamic ID
+            id: "ASD" + Date.now(),
             data: {
                 amount: rialAmount.toString()
             },
