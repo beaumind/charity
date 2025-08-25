@@ -44,6 +44,10 @@
             font-size: 18px;
             color: #856404;
         }
+        #posSettings input,
+        #posSettings select {
+            font-size: 14px;
+        }
     </style>
 </head>
 <body>
@@ -82,6 +86,25 @@
     <p id="receiptDate"></p>
     <p id="receiptTracking"></p>
     <p>با تشکر از همراهی شما 🙏</p>
+</div>
+
+<div id="posSettings" class="position-fixed bottom-0 start-0 m-3 bg-white border rounded shadow p-3" style="width: 260px; z-index: 9999;">
+    <h6 class="text-center mb-3">تنظیمات پوز</h6>
+    <div class="mb-2">
+        <label class="form-label mb-1">IP</label>
+        <input type="text" id="posIp" class="form-control form-control-sm text-center" value="192.168.70.168">
+    </div>
+    <div class="mb-2">
+        <label class="form-label mb-1">پورت</label>
+        <input type="number" id="posPort" class="form-control form-control-sm text-center" value="8569">
+    </div>
+    <div>
+        <label class="form-label mb-1">سرویس‌دهنده</label>
+        <select id="posProvider" class="form-select form-select-sm text-center">
+            <option value="sep">سپ</option>
+            <option value="damavand" selected>دماوند</option>
+        </select>
+    </div>
 </div>
 
 <script>
@@ -211,14 +234,18 @@
             allowOutsideClick: false,
             didOpen: () => Swal.showLoading()
         });
+        const posIp = document.getElementById("posIp").value.trim();
+        const posPort = parseInt(document.getElementById("posPort").value.trim());
+        const posProvider = document.getElementById("posProvider").value.trim();
+
         const payload = {
             id: "ASD" + Date.now(),
             data: { amount: rialAmount.toString() },
             configs: {
-                port: 8569,
-                ip: "192.168.70.168",
+                port: posPort,
+                ip: posIp,
                 interface: "tcp",
-                provider: "damavand"
+                provider: posProvider
             },
             source: "LUMA"
         };
@@ -265,5 +292,6 @@
     connectWebSocket();
     // connectPrinterSocket();
 </script>
+
 </body>
 </html>
